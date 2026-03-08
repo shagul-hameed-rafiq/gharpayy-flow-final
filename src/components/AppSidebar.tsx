@@ -9,9 +9,11 @@ import {
   MessageSquare,
   History,
   X,
-  LogOut,
   Moon,
   Sun,
+  Building2,
+  Bed,
+  TrendingUp,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -24,6 +26,12 @@ const navItems = [
   { to: '/conversations', icon: MessageSquare, label: 'Conversations' },
   { to: '/analytics', icon: BarChart3, label: 'Analytics' },
   { to: '/historical', icon: History, label: 'Historical' },
+];
+
+const inventoryItems = [
+  { to: '/owners', icon: Building2, label: 'Owners' },
+  { to: '/inventory', icon: Bed, label: 'Room Inventory' },
+  { to: '/effort', icon: TrendingUp, label: 'Effort Visibility' },
 ];
 
 const AppSidebar = ({ isOpen, onClose }: { isOpen?: boolean; onClose?: () => void }) => {
