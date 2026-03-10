@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { useUserRole } from '@/hooks/useUserRole';
 import { motion } from 'framer-motion';
 
 const statusBadge = (status: string) => {
@@ -44,9 +45,12 @@ const Leads = () => {
   const totalLeads = paginatedData?.total ?? 0;
   const totalPages = Math.ceil(totalLeads / PAGE_SIZE);
   const { data: agents } = useAgents();
+  const { data: role } = useUserRole();
   const bulkUpdate = useBulkUpdateLeads();
   const deleteLeads = useDeleteLeads();
   const updateLead = useUpdateLead();
+
+  const isManagement = role === 'admin' || role === 'manager';
 
   const filtered = (leads || [])
     .filter(l => {
@@ -162,11 +166,13 @@ const Leads = () => {
             <option value="response">Response Time</option>
           </select>
         </div>
-        <div className="ml-auto">
-          <Button variant="outline" size="sm" className="gap-1.5 text-2xs rounded-xl" onClick={handleExport}>
-            <Download size={12} /> Export
-          </Button>
-        </div>
+        {isManagement && (
+          <div className="ml-auto">
+            <Button variant="outline" size="sm" className="gap-1.5 text-2xs rounded-xl" onClick={handleExport}>
+              <Download size={12} /> Export
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Bulk actions */}
@@ -185,9 +191,11 @@ const Leads = () => {
             <SelectTrigger className="h-7 w-[140px] text-2xs rounded-lg"><SelectValue placeholder="Change status..." /></SelectTrigger>
             <SelectContent>{PIPELINE_STAGES.map(s => <SelectItem key={s.key} value={s.key}>{s.label}</SelectItem>)}</SelectContent>
           </Select>
-          <Button variant="destructive" size="sm" className="h-7 text-2xs gap-1 rounded-lg" onClick={handleBulkDelete}>
-            <Trash2 size={10} /> Delete
-          </Button>
+          {isManagement && (
+            <Button variant="destructive" size="sm" className="h-7 text-2xs gap-1 rounded-lg" onClick={handleBulkDelete}>
+              <Trash2 size={10} /> Delete
+            </Button>
+          )}
           <button onClick={() => setSelectedIds(new Set())} className="text-2xs text-muted-foreground hover:text-foreground ml-auto transition-colors">
             Clear
           </button>

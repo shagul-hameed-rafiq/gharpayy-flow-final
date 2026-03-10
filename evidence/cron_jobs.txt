@@ -1,0 +1,8 @@
+
+-- Check for cron jobs in supabase/migrations/20260310000000_production_ready.sql
+-- Result:
+- cron.schedule('cleanup-expired-locks', '*/15 * * * *', 'DELETE FROM public.soft_locks WHERE expires_at < now()')
+- cron.schedule('auto-lock-stale-rooms', '0 1 * * *', 'SELECT public.auto_lock_stale_rooms()')
+
+PASS - Jobs configured in migrations.
+REMARK: Must enable pg_cron extension in Supabase Dashboard.

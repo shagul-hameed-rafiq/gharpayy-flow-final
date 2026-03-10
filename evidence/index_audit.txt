@@ -1,0 +1,13 @@
+
+-- Index Audit for Scale
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'leads';
+
+- idx_leads_assigned_agent | CREATE INDEX idx_leads_assigned_agent ON public.leads USING btree (assigned_agent_id)
+- idx_leads_status | CREATE INDEX idx_leads_status ON public.leads USING btree (status)
+- idx_leads_created_at | CREATE INDEX idx_leads_created_at ON public.leads USING btree (created_at DESC)
+
+-- Index Audit for Auth
+SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'user_roles';
+- idx_user_roles_role | CREATE INDEX idx_user_roles_role ON public.user_roles USING btree (role)
+
+PASS - All suggested production indexes found.

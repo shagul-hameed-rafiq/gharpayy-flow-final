@@ -3,6 +3,8 @@ import { X, Send, Bot, User, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 interface ChatMessage {
   id: string;
@@ -42,17 +44,53 @@ interface PropertyChatProps {
 }
 
 export default function PropertyChat({ propertyName, isOpen, onClose }: PropertyChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      role: 'bot',
-      text: `Hi! 👋 I'm here to help you with ${propertyName}. Ask me about rent, food, amenities, move-in process, or anything else!`,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Lead capture state
+  const [leadId, setLeadId] = useState<string | null>(null);
+  const [leadForm, setLeadForm] = useState({ name: '', phone: '' });
+  const [isRegistering, setIsRegistering] = useState(false);
+
+  useEffect(() => {
+    // Initial fetch if we have leadId
+    if (isOpen && leadId && messages.length === 0) {
+      loadHistory();
+    } else if (isOpen && !leadId && messages.length === 0) {
+      setMessages([
+        {
+          id: 'welcome',
+          role: 'bot',
+          text: `Hi! 👋 I'm here to help you with ${propertyName}. Ask me about rent, food, amenities, move-in process, or anything else!`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }
+      ]);
+    }
+  }, [isOpen, leadId]);
+
+  const loadHistory = async () => {
+    if (!leadId) return;
+    const { data } = await supabase.from('conversations').select('*').eq('lead_id', leadId).order('created_at', { ascending: true });
+    if (data && data.length > 0) {
+      setMessages(data.map(d => ({
+        id: d.id,
+        role: d.direction === 'inbound' ? 'user' : 'bot',
+        text: d.message,
+        time: new Date(d.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      })));
+    } else {
+      setMessages([
+        {
+          id: '1',
+          role: 'bot',
+          text: `Hi! 👋 I'm here to help you with ${propertyName}. Ask me about rent, food, amenities, move-in process, or anything else!`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        }
+      ]);
+    }
+  };
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -60,29 +98,60 @@ export default function PropertyChat({ propertyName, isOpen, onClose }: Property
 
   const quickQuestions = ['What about food?', 'Is WiFi included?', 'Security details?', 'Move-in process?'];
 
-  const sendMessage = (text: string) => {
-    if (!text.trim()) return;
+  const registerLead = async () => {
+    if (!leadForm.name || !leadForm.phone) {
+      toast.error('Name and phone are required to chat');
+      return;
+    }
+    setIsRegistering(true);
+    try {
+      const { data, error } = await supabase.from('leads').insert({
+        name: leadForm.name,
+        phone: leadForm.phone,
+        source: 'website'
+      }).select().single();
 
+      if (error) throw error;
+      setLeadId(data.id);
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to start chat');
+    } finally {
+      setIsRegistering(false);
+    }
+  };
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || !leadId) return;
+
+    const userText = text.trim();
     const userMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      text: text.trim(),
+      text: userText,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsTyping(true);
 
-    setTimeout(() => {
-      const auto = getAutoResponse(text);
+    // Persist user message
+    await supabase.from('conversations').insert({ lead_id: leadId, message: userText, direction: 'inbound', channel: 'website' });
+
+    setTimeout(async () => {
+      const auto = getAutoResponse(userText);
+      const botText = auto || "Thanks for your question! I'm connecting you with a Gharpayy housing advisor who can help. They usually respond within 2 minutes. You'll also get a WhatsApp message shortly.";
+
       const botMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: auto ? 'bot' : 'agent',
-        text: auto || "Thanks for your question! I'm connecting you with a Gharpayy housing advisor who can help. They usually respond within 2 minutes. You'll also get a WhatsApp message shortly.",
+        text: botText,
         time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
       setMessages(prev => [...prev, botMsg]);
       setIsTyping(false);
+
+      // Persist bot/agent message
+      await supabase.from('conversations').insert({ lead_id: leadId, message: botText, direction: 'outbound', channel: 'website' });
     }, 800 + Math.random() * 600);
   };
 
@@ -114,69 +183,86 @@ export default function PropertyChat({ propertyName, isOpen, onClose }: Property
             </button>
           </div>
 
-          {/* Messages */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] ${msg.role === 'user' ? '' : 'flex gap-2'}`}>
-                  {msg.role !== 'user' && (
-                    <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'bot' ? 'bg-accent/10' : 'bg-info/10'}`}>
-                      {msg.role === 'bot' ? <Bot size={12} className="text-accent" /> : <User size={12} className="text-info" />}
-                    </div>
-                  )}
-                  <div>
-                    <div className={`px-3 py-2 rounded-xl text-[13px] leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-accent text-accent-foreground rounded-br-md'
-                        : 'bg-secondary text-foreground rounded-bl-md'
-                    }`}>
-                      {msg.text}
-                    </div>
-                    <p className="text-[9px] text-muted-foreground mt-0.5 px-1">{msg.time}</p>
-                  </div>
-                </div>
+          {!leadId ? (
+            <div className="flex-1 p-6 flex flex-col items-center justify-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-accent/10 flex items-center justify-center">
+                <Bot size={24} className="text-accent" />
               </div>
-            ))}
-            {isTyping && (
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center">
-                  <Bot size={12} className="text-accent" />
-                </div>
-                <div className="px-3 py-2 rounded-xl bg-secondary">
-                  <Loader2 size={14} className="animate-spin text-muted-foreground" />
-                </div>
+              <p className="text-center font-medium">Please enter your details to start chatting.</p>
+              <div className="w-full space-y-3">
+                <Input placeholder="Your Name" value={leadForm.name} onChange={e => setLeadForm(f => ({ ...f, name: e.target.value }))} />
+                <Input placeholder="Your Phone Number" value={leadForm.phone} onChange={e => setLeadForm(f => ({ ...f, phone: e.target.value }))} />
+                <Button className="w-full bg-accent hover:bg-accent/90" onClick={registerLead} disabled={isRegistering}>
+                  {isRegistering ? <Loader2 size={16} className="animate-spin" /> : 'Start Chat'}
+                </Button>
               </div>
-            )}
-          </div>
-
-          {/* Quick questions */}
-          {messages.length <= 2 && (
-            <div className="px-4 pb-2 flex gap-1.5 flex-wrap">
-              {quickQuestions.map(q => (
-                <button
-                  key={q}
-                  onClick={() => sendMessage(q)}
-                  className="text-[11px] px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
-                >
-                  {q}
-                </button>
-              ))}
             </div>
-          )}
+          ) : (
+            <>
+              {/* Messages */}
+              <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+                {messages.map((msg, i) => (
+                  <div key={msg.id || i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={`max-w-[85%] ${msg.role === 'user' ? '' : 'flex gap-2'}`}>
+                      {msg.role !== 'user' && (
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${msg.role === 'bot' ? 'bg-accent/10' : 'bg-info/10'}`}>
+                          {msg.role === 'bot' ? <Bot size={12} className="text-accent" /> : <User size={12} className="text-info" />}
+                        </div>
+                      )}
+                      <div>
+                        <div className={`px-3 py-2 rounded-xl text-[13px] leading-relaxed ${msg.role === 'user'
+                            ? 'bg-accent text-accent-foreground rounded-br-md'
+                            : 'bg-secondary text-foreground rounded-bl-md'
+                          }`}>
+                          {msg.text}
+                        </div>
+                        <p className="text-[9px] text-muted-foreground mt-0.5 px-1">{msg.time}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {isTyping && (
+                  <div className="flex items-center gap-2">
+                    <div className="w-6 h-6 rounded-full bg-accent/10 flex items-center justify-center">
+                      <Bot size={12} className="text-accent" />
+                    </div>
+                    <div className="px-3 py-2 rounded-xl bg-secondary">
+                      <Loader2 size={14} className="animate-spin text-muted-foreground" />
+                    </div>
+                  </div>
+                )}
+              </div>
 
-          {/* Input */}
-          <div className="px-3 py-2.5 border-t border-border flex gap-2">
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
-              placeholder="Ask about this PG..."
-              className="h-9 text-sm"
-            />
-            <Button size="sm" className="h-9 w-9 p-0 bg-accent hover:bg-accent/90" onClick={() => sendMessage(input)}>
-              <Send size={14} className="text-accent-foreground" />
-            </Button>
-          </div>
+              {/* Quick questions */}
+              {messages.length <= 2 && (
+                <div className="px-4 pb-2 flex gap-1.5 flex-wrap">
+                  {quickQuestions.map(q => (
+                    <button
+                      key={q}
+                      onClick={() => sendMessage(q)}
+                      className="text-[11px] px-2.5 py-1 rounded-full bg-secondary text-secondary-foreground hover:bg-muted transition-colors"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Input */}
+              <div className="px-3 py-2.5 border-t border-border flex gap-2">
+                <Input
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && sendMessage(input)}
+                  placeholder="Ask about this PG..."
+                  className="h-9 text-sm"
+                />
+                <Button size="sm" className="h-9 w-9 p-0 bg-accent hover:bg-accent/90" onClick={() => sendMessage(input)}>
+                  <Send size={14} className="text-accent-foreground" />
+                </Button>
+              </div>
+            </>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

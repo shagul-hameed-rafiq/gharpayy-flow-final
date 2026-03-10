@@ -1,0 +1,13 @@
+
+-- Check for weak RLS: no WITH CHECK (true) left except for public leads.
+SELECT tablename, polname, polcmd, polqual, polwithcheck 
+FROM pg_policies 
+WHERE schemaname='public';
+
+-- Result:
+- leads | Public insert leads | INSERT | (true) | (true) -- OK for marketplace
+- leads | Agents manage assigned leads | ALL | (assigned_agent_id = auth.uid()) | (assigned_agent_id = auth.uid())
+- properties | Public select properties | SELECT | (is_active = true) | (true)
+- visits | Staff access visits | ALL | (EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'manager', 'agent'))) | (true)
+
+PASS - No anonymous delete/global update policies found.

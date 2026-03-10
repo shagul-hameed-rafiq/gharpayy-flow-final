@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { usePublicProperty, useCreateReservation, useConfirmReservation, useSimilarProperties } from '@/hooks/usePublicData';
+import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { motion } from 'framer-motion';
 import PropertyChat from '@/components/PropertyChat';
@@ -33,6 +34,7 @@ export default function PropertyDetail() {
   const [selectedRoom, setSelectedRoom] = useState<any>(null);
   const [selectedBed, setSelectedBed] = useState<any>(null);
   const [customerForm, setCustomerForm] = useState({ name: '', phone: '', email: '', moveInDate: '' });
+  const [visitForm, setVisitForm] = useState({ name: '', phone: '', date: '', time: '10:00 AM' });
   const [reservationResult, setReservationResult] = useState<any>(null);
   const [heroIdx, setHeroIdx] = useState(0);
 
@@ -104,6 +106,41 @@ export default function PropertyDetail() {
       setReservationResult(null);
     } catch (e: any) {
       toast.error(e.message);
+    }
+  };
+
+  const handleScheduleVisit = async () => {
+    if (!visitForm.name || !visitForm.phone || !visitForm.date) {
+      toast.error('Please provide name, phone, and date.');
+      return;
+    }
+    try {
+      // 1. In production, check if lead exists, else create
+      const { data: leadInsert, error: leadErr } = await supabase.from('leads').insert({
+        name: visitForm.name,
+        phone: visitForm.phone,
+        source: 'website',
+        property_id: property.id
+      }).select().single();
+
+      if (leadErr) throw leadErr;
+
+      // 2. Combine date+time
+      const dateTimeString = `${visitForm.date}T${visitForm.time === '10:00 AM' ? '10:00' : visitForm.time === '12:00 PM' ? '12:00' : visitForm.time === '2:00 PM' ? '14:00' : visitForm.time === '4:00 PM' ? '16:00' : '18:00'}:00.000Z`;
+
+      // 3. Create Visit
+      const { error: visitErr } = await supabase.from('visits').insert({
+        lead_id: leadInsert.id,
+        property_id: property.id,
+        scheduled_at: new Date(dateTimeString).toISOString()
+      });
+
+      if (visitErr) throw visitErr;
+
+      toast.success("Visit request submitted! We'll confirm shortly.");
+      setActionMode(null);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to schedule visit');
     }
   };
 
@@ -259,11 +296,10 @@ export default function PropertyDetail() {
                               <button
                                 key={bed.id}
                                 onClick={() => { setSelectedRoom(room); setSelectedBed(bed); }}
-                                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${
-                                  selectedBed?.id === bed.id
+                                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${selectedBed?.id === bed.id
                                     ? 'bg-accent text-accent-foreground border-accent'
                                     : 'bg-secondary text-secondary-foreground border-border hover:border-muted-foreground/30'
-                                }`}
+                                  }`}
                               >
                                 <Bed size={12} className="inline mr-1" />{bed.bed_number}
                               </button>
@@ -440,11 +476,11 @@ export default function PropertyDetail() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader><DialogTitle>Schedule a Visit</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Your Name</Label><Input placeholder="Full name" /></div>
-            <div><Label>Phone</Label><Input placeholder="+91..." /></div>
-            <div><Label>Preferred Date</Label><Input type="date" /></div>
+            <div><Label>Your Name</Label><Input placeholder="Full name" value={visitForm.name} onChange={e => setVisitForm(f => ({ ...f, name: e.target.value }))} /></div>
+            <div><Label>Phone</Label><Input placeholder="+91..." value={visitForm.phone} onChange={e => setVisitForm(f => ({ ...f, phone: e.target.value }))} /></div>
+            <div><Label>Preferred Date</Label><Input type="date" value={visitForm.date} onChange={e => setVisitForm(f => ({ ...f, date: e.target.value }))} /></div>
             <div><Label>Preferred Time</Label>
-              <Select>
+              <Select value={visitForm.time} onValueChange={v => setVisitForm(f => ({ ...f, time: v }))}>
                 <SelectTrigger><SelectValue placeholder="Select time slot" /></SelectTrigger>
                 <SelectContent>
                   {['10:00 AM', '12:00 PM', '2:00 PM', '4:00 PM', '6:00 PM'].map(t => (
@@ -453,7 +489,7 @@ export default function PropertyDetail() {
                 </SelectContent>
               </Select>
             </div>
-            <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => { toast.success("Visit request submitted! We'll confirm shortly."); setActionMode(null); }}>
+            <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={handleScheduleVisit}>
               Request Visit
             </Button>
           </div>

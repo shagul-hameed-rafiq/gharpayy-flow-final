@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { CheckCircle, Loader2, ArrowRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SOURCE_LABELS } from '@/types/crm';
-
+import { supabase } from '@/integrations/supabase/client';
 const LeadCapture = () => {
   const [form, setForm] = useState({
     name: '', phone: '', email: '', source: 'website', budget: '', preferred_location: '', notes: '',
@@ -26,18 +26,17 @@ const LeadCapture = () => {
     setErrorMsg('');
 
     try {
-      const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-      const res = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/receive-lead`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(form),
-        }
-      );
-      const data = await res.json();
-      if (!res.ok) {
-        setErrorMsg(data.message || data.error || 'Something went wrong');
+      const { error } = await supabase.from("leads").insert([{
+        name: form.name,
+        phone: form.phone,
+        email: form.email || null,
+        source: form.source as any,
+        budget: form.budget ? form.budget : null,
+        notes: form.notes ? `Location: ${form.preferred_location}\nNotes: ${form.notes}` : (form.preferred_location ? `Location: ${form.preferred_location}` : null)
+      }]);
+
+      if (error) {
+        setErrorMsg(error.message || 'Something went wrong');
         setStatus('error');
       } else {
         setStatus('success');

@@ -14,6 +14,7 @@ import { format, formatDistanceToNow } from 'date-fns';
 import { Phone, Mail, MapPin, IndianRupee, Clock, MessageCircle, CalendarCheck, User, Star, Send, Bell, ArrowRightLeft, Eye, Activity, Sparkles, Loader2, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { useUserRole } from '@/hooks/useUserRole';
 
 interface Props {
   lead: LeadWithRelations | null;
@@ -37,6 +38,7 @@ const ACTION_ICONS: Record<string, typeof Activity> = {
 const LeadDetailDrawer = ({ lead, open, onClose }: Props) => {
   const updateLead = useUpdateLead();
   const { data: agents } = useAgents();
+  const { data: role } = useUserRole();
   const { data: conversations } = useConversations(lead?.id);
   const { data: followUps } = useFollowUps(lead?.id);
   const { data: activityLog } = useActivityLog(lead?.id);
@@ -46,6 +48,8 @@ const LeadDetailDrawer = ({ lead, open, onClose }: Props) => {
   const [reminderDate, setReminderDate] = useState('');
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [aiLoading, setAiLoading] = useState(false);
+
+  const isManagement = role === 'admin' || role === 'manager';
 
   const handleAiSummary = async () => {
     if (!lead) return;
@@ -175,7 +179,7 @@ const LeadDetailDrawer = ({ lead, open, onClose }: Props) => {
             </div>
             <div>
               <label className="text-[10px] text-muted-foreground mb-1 block">Assign Agent</label>
-              <Select value={lead.assigned_agent_id || ''} onValueChange={handleAgentChange}>
+              <Select value={lead.assigned_agent_id || ''} onValueChange={handleAgentChange} disabled={!isManagement}>
                 <SelectTrigger className="h-8 text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>
                   {agents?.map(a => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
